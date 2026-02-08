@@ -3,13 +3,13 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
+app.use(express.static("public"));
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: { origin: "*" }
 });
-
-app.get("/", (req, res) => res.send("wind server ok"));
 
 let windState = { x: 0, y: 0, strength: 0 };
 
