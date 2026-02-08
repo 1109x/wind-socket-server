@@ -1,0 +1,41 @@
+cat > public/index.html << 'EOF'
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Wind Display</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    html,body{margin:0;padding:0;background:#111;color:#fff;font:16px system-ui}
+    #box{padding:20px}
+    #dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:10px;background:#f55}
+  </style>
+</head>
+<body>
+  <div id="box">
+    <div><span id="dot"></span><b>Display is loading…</b></div>
+    <p id="msg">If you can read this, / is serving index.html ✅</p>
+    <pre id="wind">wind: (0.00, 0.00) s:0.00</pre>
+  </div>
+
+  <script>
+    const dot = document.getElementById("dot");
+    const windEl = document.getElementById("wind");
+    const msg = document.getElementById("msg");
+
+    const socket = io();
+
+    socket.on("connect", () => {
+      dot.style.background = "#5f5";
+      msg.textContent = "Socket connected ✅  id: " + socket.id;
+    });
+
+    socket.on("wind", (w) => {
+      windEl.textContent =
+        `wind: (${(w.x??0).toFixed(2)}, ${(w.y??0).toFixed(2)}) s:${(w.strength??0).toFixed(2)}`;
+    });
+  </script>
+</body>
+</html>
+EOF
