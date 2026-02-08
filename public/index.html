@@ -1,41 +1,222 @@
-cat > public/index.html << 'EOF'
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Wind Display</title>
+  <title>Ink Flow Display</title>
+
+  <!-- p5 -->
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.9.4/lib/p5.min.js"></script>
+  <!-- socket.io client from your own server -->
   <script src="/socket.io/socket.io.js"></script>
+
   <style>
-    html,body{margin:0;padding:0;background:#111;color:#fff;font:16px system-ui}
-    #box{padding:20px}
-    #dot{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:10px;background:#f55}
+    html,body{margin:0;padding:0;overflow:hidden;background:#f6f3ee;}
+    #hud{
+      position:fixed; left:14px; top:14px;
+      padding:10px 12px;
+      border-radius:12px;
+      background:rgba(0,0,0,0.28);
+      color:rgba(255,255,255,0.92);
+      font:13px/1.25 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+      user-select:none;
+      backdrop-filter: blur(6px);
+    }
+    #dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#f55;margin-right:8px;vertical-align:middle}
   </style>
 </head>
+
 <body>
-  <div id="box">
-    <div><span id="dot"></span><b>Display is loading…</b></div>
-    <p id="msg">If you can read this, / is serving index.html ✅</p>
-    <pre id="wind">wind: (0.00, 0.00) s:0.00</pre>
-  </div>
+  <div id="hud"><span id="dot"></span><span id="msg">Loading…</span></div>
 
   <script>
+    // ===== Socket (same origin) =====
     const dot = document.getElementById("dot");
-    const windEl = document.getElementById("wind");
     const msg = document.getElementById("msg");
 
+    let wind = { x: 0, y: 0, strength: 0 };
     const socket = io();
 
     socket.on("connect", () => {
       dot.style.background = "#5f5";
-      msg.textContent = "Socket connected ✅  id: " + socket.id;
+      msg.textContent = "Connected. Tilt phone to flow ink.";
     });
 
     socket.on("wind", (w) => {
-      windEl.textContent =
-        `wind: (${(w.x??0).toFixed(2)}, ${(w.y??0).toFixed(2)}) s:${(w.strength??0).toFixed(2)}`;
+      wind = w || wind;
     });
+
+    // ===== Art config =====
+    const WORDS = [
+      "flow","ink","water","wind","paper","wash","soft","drift","trace","tide"
+    ];
+    let wordIndex = 0;
+    const nextWord = () => WORDS[(wordIndex++) % WORDS.length];
+
+    // Clean paper + gentle motion
+    const PAPER = [248, 246, 242];
+    const NUM = 120;               // fewer words
+    const FADE_ALPHA = 10;         // long, soft trails
+    const WIND_SCALE = 0.55;       // softness of phone influence
+    const DRAG = 0.90;             // gentle damping
+    const FLOW_SCALE = 0.0035;     // field scale
+    const FLOW_STRENGTH = 0.10;    // field strength (soft)
+    const WET_RADIUS_BASE = 240;   // wet area size
+    const WET_BLEED = 0.60;        // ink bleed amount (subtle)
+
+    let pg;
+    let glyphs = [];
+    let wet = { x: 0, y: 0 };
+
+    function setup() {
+      createCanvas(window.innerWidth, window.innerHeight);
+      pixelDensity(1);
+
+      pg = createGraphics(window.innerWidth, window.innerHeight);
+      pg.pixelDensity(1);
+      pg.background(...PAPER);
+      pg.textAlign(CENTER, CENTER);
+
+      wet.x = width * 0.5;
+      wet.y = height * 0.5;
+
+      initGlyphs();
+    }
+
+    function initGlyphs() {
+      glyphs = [];
+      const grid = Math.sqrt(NUM);
+      const stepX = width / grid;
+      const stepY = height / grid;
+
+      for (let gy = 0; gy < grid; gy++) {
+        for (let gx = 0; gx < grid; gx++) {
+          if (glyphs.length >= NUM) break;
+
+          const x = (gx + 0.5) * stepX + random(-stepX * 0.25, stepX * 0.25);
+          const y = (gy + 0.5) * stepY + random(-stepY * 0.25, stepY * 0.25);
+
+          const r = random();
+          const size =
+            r < 0.18 ? random(44, 62) :
+            r < 0.50 ? random(26, 40) :
+                       random(16, 24);
+
+          glyphs.push({
+            x, y,
+            vx: 0, vy: 0,
+            word: nextWord(),
+            size,
+            seed: random(1000),
+          });
+        }
+      }
+    }
+
+    function draw() {
+      // fade paper softly (ink trails)
+      pg.noStroke();
+      pg.fill(PAPER[0], PAPER[1], PAPER[2], FADE_ALPHA);
+      pg.rect(0, 0, pg.width, pg.height);
+
+      // wind from phone (soft)
+      const wx = (wind.x || 0) * (wind.strength || 0) * WIND_SCALE;
+      const wy = (wind.y || 0) * (wind.strength || 0) * WIND_SCALE;
+
+      // wet center drifts with wind (ink soaked region)
+      wet.x = wrap(lerp(wet.x, wet.x + wx * 520, 0.05), width);
+      wet.y = wrap(lerp(wet.y, wet.y + wy * 520, 0.05), height);
+
+      const t = frameCount * 0.010;
+      const wetRadius = WET_RADIUS_BASE + (wind.strength || 0) * 160;
+
+      pg.textAlign(CENTER, CENTER);
+
+      for (const g of glyphs) {
+        // gentle flow field
+        const n = noise(g.x * FLOW_SCALE, g.y * FLOW_SCALE, t);
+        const ang = n * TWO_PI * 2.0;
+        const fx = cos(ang) * FLOW_STRENGTH;
+        const fy = sin(ang) * FLOW_STRENGTH;
+
+        // wetness factor (near wet center)
+        const d = distWrap(g.x, g.y, wet.x, wet.y, width, height);
+        const wetAmt = smoothstep(wetRadius, 0, d);
+
+        // wet pulls more, dry stays steadier
+        const wetPull = 0.18 + 0.90 * wetAmt;
+        const jitter = WET_BLEED * wetAmt * (0.6 + 0.4 * (wind.strength || 0));
+
+        // update motion
+        g.vx = (g.vx + (fx + wx) * wetPull) * DRAG;
+        g.vy = (g.vy + (fy + wy) * wetPull) * DRAG;
+        g.x = wrap(g.x + g.vx, width);
+        g.y = wrap(g.y + g.vy, height);
+
+        // ink alpha: wet is lighter + slightly blurred
+        const baseA = 120;
+        const alpha = baseA - 70 * wetAmt;
+
+        pg.textSize(g.size);
+
+        // main word
+        pg.noStroke();
+        pg.fill(20, 20, 24, alpha);
+        pg.text(g.word, g.x, g.y);
+
+        // subtle bleed layer
+        if (wetAmt > 0.03) {
+          pg.fill(20, 20, 24, alpha * 0.18);
+          pg.text(g.word, g.x + random(-jitter, jitter), g.y + random(-jitter, jitter));
+          pg.text(g.word, g.x + random(-jitter, jitter), g.y + random(-jitter, jitter));
+        }
+
+        // occasional word change (slow)
+        if (frameCount % 360 === 0 && random() < 0.10) {
+          g.word = nextWord();
+        }
+      }
+
+      // occasional tiny blur for paper soak (not too “busy”)
+      if (frameCount % 28 === 0) pg.filter(BLUR, 0.45);
+
+      image(pg, 0, 0);
+
+      // update HUD text (very minimal)
+      msg.textContent = `Connected. wind: (${(wind.x||0).toFixed(2)}, ${(wind.y||0).toFixed(2)}) s:${(wind.strength||0).toFixed(2)}`;
+    }
+
+    function windowResized() {
+      resizeCanvas(window.innerWidth, window.innerHeight);
+
+      const old = pg;
+      pg = createGraphics(window.innerWidth, window.innerHeight);
+      pg.pixelDensity(1);
+      pg.background(...PAPER);
+      pg.textAlign(CENTER, CENTER);
+      pg.image(old, 0, 0, pg.width, pg.height);
+
+      initGlyphs();
+    }
+
+    // ===== helpers =====
+    function wrap(v, max) {
+      if (v < 0) return v + max;
+      if (v > max) return v - max;
+      return v;
+    }
+    function distWrap(x1, y1, x2, y2, w, h) {
+      let dx = Math.abs(x1 - x2);
+      let dy = Math.abs(y1 - y2);
+      dx = Math.min(dx, w - dx);
+      dy = Math.min(dy, h - dy);
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    function smoothstep(edge0, edge1, x) {
+      const t = clamp((x - edge0) / (edge1 - edge0), 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
   </script>
 </body>
 </html>
-EOF
