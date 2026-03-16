@@ -32,14 +32,12 @@
   <div id="hud"><span id="dot"></span><span id="msg">Loading…</span></div>
 
   <script>
-    // ================= Socket (SAME ORIGIN) =================
     const dot = document.getElementById("dot");
     const msg = document.getElementById("msg");
 
     let socket;
     let wind = { x: 0, y: 0, strength: 0 };
 
-    // ✅ 关键改动：同源连接，不写 SERVER_URL
     socket = io();
 
     socket.on("connect", () => {
@@ -51,9 +49,7 @@
       wind = s || wind;
     });
 
-    // ================= Your sketch (same effect) =================
 
-    // ✅ 用完整单词（不是字母）
     const WORDS = ["Spring","Summer","Autumn","Winter"];
     let wordIndex = 0;
     function nextWord() {
@@ -68,7 +64,7 @@
 
     const PAPER = [248, 246, 242];
     const FADE_ALPHA = 10;
-    const NUM_GLYPHS = 70;   // 更少一些
+    const NUM_GLYPHS = 70;   
     const WIND_SCALE = 0.55;
     const DRAG = 0.90;
     const FLOW_SCALE = 0.0035;
@@ -105,7 +101,6 @@
           const x = (gx + 0.5) * stepX + random(-stepX * 0.25, stepX * 0.25);
           const y = (gy + 0.5) * stepY + random(-stepY * 0.25, stepY * 0.25);
 
-          // 大小不一：大词少，小词多
           const r = random();
           const size =
             r < 0.18 ? random(44, 62) :
@@ -124,7 +119,7 @@
     }
 
     function draw() {
-      // 纸面轻擦，保持干净
+
       pg.noStroke();
       pg.fill(PAPER[0], PAPER[1], PAPER[2], FADE_ALPHA);
       pg.rect(0, 0, pg.width, pg.height);
@@ -164,19 +159,17 @@
 
         pg.textSize(g.size);
 
-        // 主字（整词）
         pg.noStroke();
         pg.fill(20, 20, 24, alpha);
         pg.text(g.word, g.x, g.y);
 
-        // 湿区晕染层（轻）
         if (wetAmt > 0.03) {
           pg.fill(20, 20, 24, alpha * 0.18);
           pg.text(g.word, g.x + random(-jitter, jitter), g.y + random(-jitter, jitter));
           pg.text(g.word, g.x + random(-jitter, jitter), g.y + random(-jitter, jitter));
         }
 
-        // 偶尔换词（很克制）
+        
         if (frameCount % 360 === 0 && random() < 0.10) {
           g.word = nextWord();
         }
@@ -204,7 +197,6 @@
       initGlyphs();
     }
 
-    // ===== helpers =====
     function wrap(v, max) {
       if (v < 0) return v + max;
       if (v > max) return v - max;
@@ -226,7 +218,7 @@
 
     function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
 
-    // ✅ 这里是你之前贴到一半缺失的结尾，我帮你补齐了
+    
     function softSeparate(arr, minD, strength) {
       for (let i = 0; i < arr.length; i++) {
         const a = arr[i];
